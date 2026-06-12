@@ -44,6 +44,6 @@ class Student(Base):
     age = Column(Integer, nullable=True)
     photo_url = Column(String(500), nullable=True)
     education_details = Column(String(500), nullable=True)
-    target_exam = Column(String(100), default="IPMAT 2027")
+    target_exam = Column(String(100), default="SCHOLAR")
 
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))

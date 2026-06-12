@@ -1,5 +1,5 @@
 from enum import Enum
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File
 import csv
 import io
 import json
@@ -18,6 +18,7 @@ import hashlib
 # Import our new Models and Schemas
 from app.models import student as student_model
 from app.models import question as question_model # Add this line
+from app.models.question import Question
 from app.schemas import student as student_schema
 
 from sqlalchemy import text
@@ -179,51 +180,82 @@ async def login_student(credentials: student_schema.StudentLogin, db: Session = 
         }
     }
 
-@app.post("/api/v1/admin/questions/upload", status_code=status.HTTP_201_CREATED)
+router = APIRouter()
+
+@router.post("/upload-csv")
 async def upload_questions_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Accepts a CSV file and bulk-inserts bilingual questions into the database."""
-    
+    # 1. Validate file type
     if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .csv file.")
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV.")
 
     try:
-        content = await file.read()
-        decoded_content = content.decode('utf-8')
-        reader = csv.DictReader(io.StringIO(decoded_content))
+        # 2. Read and Decode the CSV
+        contents = await file.read()
+        decoded_content = contents.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(decoded_content))
 
+        # List of your supported language codes
+        supported_langs = ['hi', 'or', 'ta', 'te', 'mr', 'kn', 'gu', 'bn']
         questions_to_insert = []
-        
-        for row in reader:
-            # Parse options and answers using the pipe separator
-            parsed_options = [opt.strip() for opt in row['options'].split('|') if opt.strip()]
-            parsed_answers = [ans.strip() for ans in row['correct_answers'].split('|') if ans.strip()]
 
-            # Map the expanded CSV columns to the new database model
-            new_question = question_model.Question(
-                syllabus_tag=row['syllabus_tag'].strip(),
-                level=int(row.get('level', 1)), 
-                question_text=row['question_text'].strip(),
-                question_text_regional=row.get('question_text_regional', '').strip() or None,
-                passage_text=row.get('passage_text', '').strip() or None,
-                options=parsed_options,
-                correct_answers=parsed_answers,
-                explanation=row.get('explanation', '').strip() or None
+        for row in csv_reader:
+            # 3. Build the English Options JSON Array
+            options_en = [
+                row.get('opt_a_en', '').strip(),
+                row.get('opt_b_en', '').strip(),
+                row.get('opt_c_en', '').strip(),
+                row.get('opt_d_en', '').strip()
+            ]
+            # Filter out any accidentally empty columns
+            options_en = [opt for opt in options_en if opt] 
+
+            # 4. Pack Regional Translations into the Multilingual Hub
+            packed_translations = {}
+            for lang in supported_langs:
+                # Check if this row actually has a translation for this language
+                if row.get(f'q_{lang}') and row[f'q_{lang}'].strip():
+                    packed_translations[lang] = {
+                        "question": row[f'q_{lang}'].strip(),
+                        "options": [
+                            row.get(f'opt_a_{lang}', '').strip(),
+                            row.get(f'opt_b_{lang}', '').strip(),
+                            row.get(f'opt_c_{lang}', '').strip(),
+                            row.get(f'opt_d_{lang}', '').strip()
+                        ],
+                        "explanation": row.get(f'exp_{lang}', '').strip()
+                    }
+
+            # 5. Map CSV data to your exact SQLAlchemy Model
+            new_question = Question(
+                syllabus_tag=row.get('topic', '').strip(),
+                level=int(row.get('level_number', 1)),
+                
+                question_text=row.get('q_en', '').strip(),
+                passage_text=row.get('passage_en', '').strip(), # Optional
+                
+                options=options_en, # Stored as JSONB
+                correct_answers=[row.get('correct_option', '').strip().upper()], # Stored as JSONB
+                explanation=row.get('exp_en', '').strip(),
+                
+                translations=packed_translations # The massive JSONB hub
             )
             questions_to_insert.append(new_question)
 
+        # 6. Bulk save to Neon Postgres
         db.add_all(questions_to_insert)
         db.commit()
 
         return {
             "status": "success", 
-            "message": f"Successfully imported {len(questions_to_insert)} bilingual questions into the arena."
+            "message": f"Successfully imported {len(questions_to_insert)} questions into the Basecamp Database."
         }
 
     except KeyError as e:
-        raise HTTPException(status_code=400, detail=f"CSV is missing a required column header: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Missing required CSV column: {str(e)}")
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"An error occurred during processing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing CSV: {str(e)}")
     
 # --- Grading Schema ---
 class QuizSubmission(BaseModel):
@@ -231,7 +263,6 @@ class QuizSubmission(BaseModel):
     syllabus_tag: str
     answers: Dict[int, List[str]]
 
-# --- Grading Endpoint ---
 # --- Grading Endpoint ---
 @app.post("/api/v1/arena/submit")
 async def submit_exam(

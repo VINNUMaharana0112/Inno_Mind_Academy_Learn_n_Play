@@ -10,18 +10,24 @@ class Question(Base):
     
     # Tagging & Freemium Wall Logic
     syllabus_tag = Column(String(100), index=True, nullable=False)
-    level = Column(Integer, default=1) # Levels 1-10 are Free. Levels 11+ trigger the Premium Wall.
-
-    # 1. Bilingual Content Fields
+    
+    # Consolidated Level tracking (Levels 1-10 are Free. Levels 11+ trigger the Premium Wall)
+    level = Column(Integer, index=True, nullable=False, default=1) 
+    
+    # 1. Base English Content Fields
     question_text = Column(Text, nullable=False)          # The default/English text
-    question_text_regional = Column(Text, nullable=True)  # Hindi, Odia, Bengali, etc.
-    passage_text = Column(Text, nullable=True)            # Optional reference material
+    passage_text = Column(Text, nullable=True)            # Optional reference material (e.g., Reading Comprehension)
     
     # 2. Options & Answers (Preserved for your array-sorting grading logic)
-    options = Column(JSONB, nullable=False)               # List of available options
-    correct_answers = Column(JSONB, nullable=False)       # List of the correct options
+    options = Column(JSONB, nullable=False)               # List of available options e.g., ["A", "B", "C", "D"]
+    correct_answers = Column(JSONB, nullable=False)       # List of the correct options e.g., ["A"]
     
     # 3. Post-Match Learning
-    explanation = Column(Text, nullable=True)             # Detailed solution for the end screen
+    explanation = Column(Text, nullable=True)             # Detailed English solution for the end screen
+    
+    # 4. 🌍 The Master Multilingual Hub
+    # Replaces the single 'question_text_regional' to dynamically support 
+    # Odia, Tamil, Telugu, Hindi, Marathi, Kannada, Gujarati, and Bengali
+    translations = Column(JSONB, nullable=True, default={}) 
     
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
