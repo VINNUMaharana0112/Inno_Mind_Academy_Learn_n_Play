@@ -182,7 +182,7 @@ async def login_student(credentials: student_schema.StudentLogin, db: Session = 
 
 router = APIRouter()
 
-@router.post("/upload-csv")
+@app.post("/api/v1/questions/upload-csv")
 async def upload_questions_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     # 1. Validate file type
     if not file.filename.endswith('.csv'):
