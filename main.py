@@ -65,12 +65,20 @@ async def get_current_student(token: str = Depends(oauth2_scheme), db: Session =
         
     return student
 
+# The Bouncer's VIP List
+origins = [
+    "http://localhost:5173",                 # For your local development
+    "https://innomind-client.onrender.com",  # Your Render frontend URL
+    "https://www.innomindacademy.com",       # Your live custom domain
+    "https://innomindacademy.com",           # Your live root domain
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 
 @app.get("/")
