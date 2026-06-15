@@ -1,32 +1,31 @@
 import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv
 
-# 1. Load the environment variables from the .env file automatically
+# Load environment variables
 load_dotenv()
 
-# 2. Fetch the Database URL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://user:password@localhost:5432/dbname"
-)
+# Fetch the Neon database URL from your .env file
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Render uses 'postgres://', but SQLAlchemy 2.0 requires 'postgresql://'
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-# 3. Create the SQLAlchemy Engine
+# 1. THE OPTIMIZATION: Connection Pooling Engine
+# We add pool_size, max_overflow, and pool_pre_ping to keep connections alive and fast.
 engine = create_engine(
-    DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=5,             # Keep 5 connections open and ready at all times
+    max_overflow=10,         # Allow up to 10 extra connections during traffic spikes
+    pool_pre_ping=True,      # ALWAYS test the connection before using it (fixes Neon disconnects)
+    pool_recycle=1800        # Refresh connections every 30 minutes to prevent staleness
 )
 
+# 2. Session Local
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 3. Base Model
 Base = declarative_base()
 
+# 4. Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
