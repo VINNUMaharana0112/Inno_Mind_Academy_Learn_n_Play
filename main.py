@@ -28,7 +28,8 @@ with engine.connect() as conn:
     conn.commit()
 
 # Build the tables
-student_model.Base.metadata.create_all(bind=engine)
+student_model.Base.metadata.drop_all(bind=engine) # <--- THIS WIPES THE DB
+student_model.Base.metadata.create_all(bind=engine) # <--- THIS REBUILDS IT WITH NEW COLUMNS
 
 # ==========================================
 # 2. FASTAPI APP & MIDDLEWARE
