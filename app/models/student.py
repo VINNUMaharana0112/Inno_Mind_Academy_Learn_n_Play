@@ -3,15 +3,18 @@ import uuid
 from sqlalchemy import Column, String, Integer, Boolean, Enum
 from app.core.database import Base 
 
+# Used for specific level progression tracking
 class RoundLevel(enum.Enum):
     ENTRY = "entry"
     EXPERT = "expert"
     GENIUS = "genius"
 
+# The Core Progression Rank (Matches your new Dashboard Gatekeeper)
 class StudentTier(enum.Enum):
-    FREEMIUM = "freemium"
-    PREMIUM = "premium"
-    ELITE = "elite"
+    ENTRY = "Entry"
+    EXPERT = "Expert"
+    GENIUS = "Genius"
+    GLOBAL_GENIUS = "GlobalGenius"
 
 class Student(Base):
     __tablename__ = "students"
@@ -46,5 +49,5 @@ class Student(Base):
     total_questions_attempted = Column(Integer, default=0)
     total_correct_answers = Column(Integer, default=0)
     
-    # Kept for future monetization pivots
-    tier = Column(Enum(StudentTier), default=StudentTier.FREEMIUM)
+    # The Global Rank (Ties directly into the Razorpay unlock flow)
+    tier = Column(Enum(StudentTier), default=StudentTier.ENTRY)

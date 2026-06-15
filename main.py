@@ -28,6 +28,7 @@ with engine.connect() as conn:
     conn.commit()
 
 # Build the tables
+student_model.Base.metadata.drop_all(bind=engine)
 student_model.Base.metadata.create_all(bind=engine) # <--- THIS REBUILDS IT WITH NEW COLUMNS
 
 # ==========================================
@@ -314,17 +315,17 @@ async def submit_exam(
     # ==========================================
     upgrade_triggered = False
     
-    if current_student.tier == student_model.StudentTier.FREEMIUM:
+    if current_student.tier == student_model.StudentTier.ENTRY:
         if lifetime_average >= 70.0 and current_student.highest_level_passed >= 10:
-            current_student.tier = student_model.StudentTier.PREMIUM
+            current_student.tier = student_model.StudentTier.EXPERT
             message = "🎉 INCREDIBLE! 70%+ Average & Level 10 Cleared. You earned a FREE upgrade to PREMIUM!"
             upgrade_triggered = True
             
-    elif current_student.tier == student_model.StudentTier.PREMIUM:
+    elif current_student.tier == student_model.StudentTier.EXPERT:
         if lifetime_average >= 90.0 and current_student.highest_level_passed >= 100:
-            current_student.tier = student_model.StudentTier.ELITE
+            current_student.tier = student_model.StudentTier.GENIUS
             current_student.has_unlimited_lives = True 
-            message = "👑 FLAWLESS EXCELLENCE! Welcome to the ELITE tier. Infinite Lives unlocked!"
+            message = "👑 FLAWLESS EXCELLENCE! Welcome to the GENIUS tier. Infinite Lives unlocked!"
             upgrade_triggered = True
 
     db.commit()
