@@ -39,8 +39,8 @@ origins = [
     "http://localhost:5173",
     "http://localhost:5174",
     "https://inno-mind-academy-learn-n-play.onrender.com", # Your Render frontend URL
-    "https://www.innomindacademy.com",                     # NEW: Custom domain with www
-    "https://innomindacademy.com"                          # NEW: Custom domain without www
+    "https://www.innomindacademy.com",                     # Custom domain with www
+    "https://innomindacademy.com"                          # Custom domain without www
 ]
 
 app.add_middleware(
@@ -216,11 +216,19 @@ async def get_available_missions():
         "logical-reasoning"
     ]
 
+# --- PYDANTIC SCHEMAS FOR ARENA ---
 class QuizSubmission(BaseModel):
     student_id: UUID
     syllabus_tag: str
     answers: Dict[str, List[str]] # Changed from int to str to support Sanity IDs
 
+class ReviewPayload(BaseModel):
+    student_id: UUID
+    subject: str
+    rating: int
+    feedback: str
+
+# --- ARENA SUBMIT ENDPOINT ---
 @app.post("/api/v1/arena/submit")
 async def submit_exam(
     submission: QuizSubmission, 
@@ -344,6 +352,42 @@ async def submit_exam(
         "message": message,
         "upgrade_triggered": upgrade_triggered
     }
+
+# --- NEW: ARENA REVIEW ENDPOINT ---
+@app.post("/api/v1/arena/review")
+async def submit_review(
+    payload: ReviewPayload, 
+    db: Session = Depends(get_db),
+    current_student: student_model.Student = Depends(get_current_student)
+):
+    """Catches and processes feedback from the Arena Review Modal."""
+    if str(current_student.student_id) != str(payload.student_id):
+        raise HTTPException(status_code=403, detail="Unauthorized.")
+
+    try:
+        # Logs the review safely to the server console
+        print(f"\n--- 🌟 NEW STUDENT REVIEW 🌟 ---")
+        print(f"Student ID : {payload.student_id}")
+        print(f"Subject    : {payload.subject}")
+        print(f"Rating     : {payload.rating}/5")
+        print(f"Feedback   : {payload.feedback}")
+        print(f"--------------------------------\n")
+        
+        # UNCOMMENT THE BELOW BLOCK once you add a Review class to your student_model.py
+        # new_review = student_model.Review(
+        #     student_id=payload.student_id,
+        #     subject=payload.subject,
+        #     rating=payload.rating,
+        #     feedback=payload.feedback
+        # )
+        # db.add(new_review)
+        # db.commit()
+
+        return {"status": "success", "message": "Review logged successfully."}
+    except Exception as e:
+        print(f"Review Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save review.")
+
 
 # ==========================================
 # 7. IN-GAME ECONOMY
