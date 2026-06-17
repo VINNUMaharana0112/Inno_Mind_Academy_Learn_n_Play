@@ -166,21 +166,17 @@ SANITY_URL = f"https://{PROJECT_ID}.api.sanity.io/{API_VERSION}/data/query/{DATA
 
 @app.get("/api/v1/questions/fetch-level")
 async def get_level_questions_sanity(student_id: str, subject: str, level: int):
-    """Fetches questions dynamically from Sanity CMS via REST API."""
-    seen_ids = [] # Placeholder for future DB query
-    seen_ids_str = json.dumps(seen_ids)
+    """Fetches questions dynamically from Sanity CMS via REST API (Pro Fix LevelSet Array)."""
     
+    # We query the specific levelSet where either the academic or non-academic subject matches
     groq_query = f"""
-    *[_type == "question" && subject == "{subject}" && level_number == {level} && !(_id in {seen_ids_str})] {{
-        _id,
-        subject,
-        topic,
-        level_number,
-        question_text,
-        "image_url": media.asset->url,
-        options,
-        correct_answer,
-        explanation
+    *[_type == "levelSet" && (academic_subject == "{subject}" || non_academic_subject == "{subject}") && level_number == {level}][0] {{
+        "questions": questions[]{{
+            "_id": _key, 
+            "question_text": question_text,
+            "options": options,
+            "correct_answer": correct_answer
+        }}
     }}
     """
     
@@ -192,15 +188,15 @@ async def get_level_questions_sanity(student_id: str, subject: str, level: int):
             
         data = response.json()
         
-    all_available = data.get("result", [])
+    level_data = data.get("result")
     
-    if len(all_available) < 30:
-        fallback_query = f'*[_type == "question" && subject == "{subject}" && level_number == {level}]'
-        async with httpx.AsyncClient() as client:
-            fallback_response = await client.get(SANITY_URL, params={"query": fallback_query})
-            all_available = fallback_response.json().get("result", [])
-            
-    selected_questions = random.sample(all_available, min(len(all_available), 30))
+    if not level_data or not level_data.get("questions"):
+        return {"questions": []}
+        
+    all_available = level_data.get("questions", [])
+    
+    # Shuffle and pick up to 10 for the arena encounter
+    selected_questions = random.sample(all_available, min(len(all_available), 10))
     return {"questions": selected_questions}
 
 
@@ -209,12 +205,19 @@ async def get_level_questions_sanity(student_id: str, subject: str, level: int):
 # ==========================================
 @app.get("/api/v1/missions")
 async def get_available_missions():
-    """Returns the active subjects for the Season 1 Beta directly."""
-    return [
-        "quantitative-aptitude", 
-        "general-knowledge", 
-        "logical-reasoning"
-    ]
+    """Returns the active subjects for the Season 1 Beta categorized into Academic/Non-Academic."""
+    return {
+        "academic": [
+            {"id": "quantitative-aptitude", "name": "Quantitative Aptitude"},
+            {"id": "indian-polity", "name": "Indian Polity"},
+            {"id": "history", "name": "History"}
+        ],
+        "non_academic": [
+            {"id": "logical-reasoning", "name": "Logical Reasoning"},
+            {"id": "general-knowledge", "name": "General Knowledge"},
+            {"id": "coding-logic", "name": "Coding Logic"}
+        ]
+    }
 
 # --- PYDANTIC SCHEMAS FOR ARENA ---
 class QuizSubmission(BaseModel):
@@ -245,12 +248,14 @@ async def submit_exam(
 
     question_ids_str = json.dumps(question_ids)
 
-    # 2. Securely fetch ONLY the answer keys for these specific questions from Sanity
+    # 2. Securely fetch ONLY the answer keys for these specific questions from Sanity LevelSets
     groq_query = f"""
-    *[_type == "question" && _id in {question_ids_str}] {{
-        _id,
-        level_number,
-        correct_answer
+    *[_type == "levelSet"] {{
+        "matched_questions": questions[_key in {question_ids_str}] {{
+            "_id": _key,
+            "level_number": ^.level_number,
+            "correct_answer": correct_answer
+        }}
     }}
     """
     
@@ -264,7 +269,11 @@ async def submit_exam(
             
         data = response.json()
         
-    sanity_questions = data.get("result", [])
+    # Flatten the result to get just the list of matched questions
+    sanity_questions = []
+    for doc in data.get("result", []):
+        if doc.get("matched_questions"):
+            sanity_questions.extend(doc.get("matched_questions"))
     
     if not sanity_questions:
         raise HTTPException(status_code=400, detail="Could not validate exam data.")
