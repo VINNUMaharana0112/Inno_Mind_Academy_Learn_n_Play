@@ -231,6 +231,40 @@ class ReviewPayload(BaseModel):
     rating: int
     feedback: str
 
+# NEW: SCHEMA FOR STREAMLIT GAME SYNC
+class GameResult(BaseModel):
+    email: str
+    trophies_won: int
+    attempted: int
+    correct: int
+    rating_boost: int
+
+# --- NEW: EXTERNAL GAME SCORE SYNC ENDPOINT ---
+@app.post("/api/v1/arena/submit-score")
+async def submit_external_score(result: GameResult, db: Session = Depends(get_db)):
+    """
+    Receives the final score from the external game UI and securely updates NeonDB.
+    Syncs data with the Streamlit learning portal perfectly using SQLAlchemy.
+    """
+    student = db.query(student_model.Student).filter(student_model.Student.email == result.email).first()
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found. Ensure email matches Streamlit account.")
+
+    # Update stats
+    student.trophy_count += result.trophies_won
+    student.total_questions_attempted += result.attempted
+    student.total_correct_answers += result.correct
+    student.rating += result.rating_boost
+
+    try:
+        db.commit()
+        db.refresh(student)
+        return {"status": "success", "message": f"Stats synced successfully for {result.email}"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error during sync: {str(e)}")
+
 # --- ARENA SUBMIT ENDPOINT ---
 @app.post("/api/v1/arena/submit")
 async def submit_exam(
